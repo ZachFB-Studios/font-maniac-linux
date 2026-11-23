@@ -193,16 +193,16 @@ step_app() {
             row "$SRC" "Run it from this folder" "$(tilde "$SRC")"
             row @browse "Browse…" "pick a folder; the app goes in font-maniac/ inside it"
             row @paste "Type or paste a path"
-        } | menu "Where should Font Maniac live?" "The app is small (a few MB plus its font index).   $HINT"
+        } | menu "Where should the app go?" "The app is small (a few MB plus its font index).   $HINT"
     ) || return 1
     case $pick in
         @browse) p=$(browse "$HOME" "Pick a folder for the app") || return 2 ;;
-        @paste) p=$(ask_path "Where should Font Maniac live?" "$HOME") || return 2 ;;
+        @paste) p=$(ask_path "Where should the app go?" "$HOME") || return 2 ;;
         *) p=$pick ;;
     esac
     if [[ $pick == @* && $p != "$SRC" && ${p##*/} != font-maniac ]]; then p=$p/font-maniac; fi
     if [[ -d $p && $p != "$SRC" && ! -f $p/fontcore.py ]] && [[ -n $(ls -A "$p" 2>/dev/null) ]]; then
-        title "Where should Font Maniac live?"; bad "$(tilde "$p") already has other files in it."
+        title "Where should the app go?"; bad "$(tilde "$p") already has other files in it."
         dim "Pick a new or empty folder."; key; return 2
     fi
     APP=$p
@@ -496,7 +496,7 @@ APP="" LIB="" GOOGLE=later LAUNCHER=yes CMD=no
 if [[ -f $RECORD ]]; then
     # shellcheck disable=SC1090
     source "$RECORD"
-    # Settings changed inside the app live in config.json and win over this installer's record.
+    # Settings changed inside the app are saved in config.json and win over this installer's record.
     cfg_lib=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("library", ""))' \
               "$APP/config.json" 2>/dev/null)
     [[ -n $cfg_lib ]] && LIB=$cfg_lib

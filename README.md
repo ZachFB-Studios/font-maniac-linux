@@ -56,12 +56,13 @@ cd font-maniac-linux
 
 The installer walks you through it step by step:
 
-1. **Where the app goes.** `~/.local/share/font-maniac` is recommended, or run it straight from the
-   folder you cloned.
-2. **Where your font collection lives.** This is where your full font collection is stored, for
-   browsing: every font you own, in any subfolders you like (another drive is fine). `~/Fonts` is
-   the suggested spot. Nothing in it gets moved or installed. Fonts you switch on are linked into
-   `~/.local/share/fonts/FontManiac`, the standard per-user font folder every distro reads.
+1. **App folder.** Where the app itself goes. I keep mine in an Apps folder on my SSD, and I suggest
+   something similar: your boot drive (`~/.local/share/font-maniac` is the default) or an Apps folder
+   on any drive. You can also run it straight from the folder you cloned.
+2. **Font collection.** Point the app to your own fonts folder, where you keep all your fonts, in any
+   subfolders you like. I keep mine in `Assets/Fonts/`. Nothing in it gets moved or installed. Fonts
+   you switch on are linked into `~/.local/share/fonts/FontManiac`, the standard per-user font
+   folder every distro reads.
 3. **Google Fonts.** Download now (1.3 GB download, about 4 GB on disk) or later from Settings.
 4. **App menu entry.** Works on every distro and desktop: GNOME, KDE, XFCE, Hyprland/Sway launchers
    (rofi, wofi, fuzzel, walker), all of them.
@@ -70,7 +71,8 @@ The installer walks you through it step by step:
 Then it sets up its own Python environment inside the app folder and indexes your fonts, so the first
 start is instant.
 
-**Update:** `git pull`, then `./install.sh` and pick **Update**. Your settings are kept.
+**Update:** `git pull`, then `./install.sh` and pick **Update**. Your settings are kept. (Running it
+straight from the cloned folder? Then `git pull` is all you need.)
 
 **Uninstall:** `./install.sh --uninstall` (add `--dry-run` to see what it would remove first). It
 removes the app, the menu entry, the command and the links for fonts you enabled. Your font files are
@@ -95,7 +97,7 @@ sudo apt install python3-venv fzf curl
 
 - Font Maniac is a small local server (Python, only on `127.0.0.1`) plus a web UI in an app window.
   Closing the window stops the server.
-- Index and thumbnails live in `cache/` inside the app folder; settings live in `config.json` there.
+- Index and thumbnails are kept in `cache/` inside the app folder, and settings in `config.json` there.
   Change the fonts folder any time from Settings (gear icon, top right).
 - **Enable** puts a link to the font in `~/.local/share/fonts/FontManiac/` and refreshes fontconfig.
   That's the standard per-user font folder on every distro, so every app sees it. **Disable** removes
