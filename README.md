@@ -2,7 +2,7 @@
 
 **A font manager for Linux that doesn't suck.**
 
-<!-- MEDIA: hero video / GIF here -->
+https://github.com/user-attachments/assets/ec5c2fb6-a3ef-46af-959d-84d3f297d426
 
 Have you ever tried to use the default Linux font manager? It struggles and freezes with just a small
 number of fonts.
@@ -14,7 +14,9 @@ So font managers on Linux suck. They crawl to a halt and can't browse any large 
 one-shot this in like 5 minutes. I had to move a few buttons and UI elements around, but it's imo the
 only good font manager for Linux.
 
-<!-- MEDIA: side-by-side video, the other apps choking vs. Font Maniac scrolling a huge library -->
+
+https://github.com/user-attachments/assets/29b35264-9037-45ef-aa75-104f7b66a7ed
+
 
 ## The big flexes
 
