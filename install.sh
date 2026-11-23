@@ -25,8 +25,8 @@ ENABLE_DIR=$DATA/fonts/FontManiac
 APP_FILES=(fontcore.py index.py server.py run.sh install.sh requirements.txt README.md LICENSE web icons)
 GOOGLE_URL=https://github.com/google/fonts
 # key, name: the icons in icons/ (make them with dev/make-icons.py)
-ICONS=(lavender Lavender peach Peach mint Mint sky Sky butter Butter blush Blush 3d "3D cards")
-icon_file() { [[ $1 == 3d ]] && echo font-maniac.png || echo "font-maniac-$1.svg"; }
+ICONS=(lavender Lavender peach Peach mint Mint sky Sky butter Butter blush Blush)
+icon_file() { [[ $1 == 3d ]] && set -- lavender; echo "font-maniac-$1.svg"; }   # 3d = old removed PNG
 DRY=0
 
 # ------------------------------------------------ colours (Material 3 palette if this desktop has one)
@@ -173,11 +173,13 @@ check_deps() {
     command -v curl >/dev/null || { miss+=(curl); hard=1; }
     command -v fc-cache >/dev/null || { miss+=(fontconfig); hard=1; }
     command -v git >/dev/null || opt+=("git (to download Google Fonts)")
-    for b in chromium chromium-browser google-chrome-stable google-chrome brave brave-browser \
-             microsoft-edge-stable microsoft-edge vivaldi-stable vivaldi; do
-        command -v "$b" >/dev/null && { found=$b; break; }
+    for b in chromium chromium-browser ungoogled-chromium google-chrome-stable google-chrome brave brave-browser \
+             microsoft-edge-stable microsoft-edge vivaldi-stable vivaldi thorium-browser opera; do
+        command -v "$b" >/dev/null || continue
+        if timeout 10 "$b" --version >/dev/null 2>&1; then found=$b; break; fi
+        opt+=("$b is installed but won't start (try reinstalling or updating it)")
     done
-    [[ -n $found ]] || opt+=("a Chromium-based browser (chromium, chrome, brave, edge, vivaldi) for the app window; without one it opens in a normal browser tab")
+    [[ -n $found ]] || opt+=("a Chromium-based browser (chromium, chrome, brave, edge, vivaldi, opera) for the app window; without one it opens in a normal browser tab")
     if ((hard)); then
         printf '\nFont Maniac needs a few things first:\n\n  %s\n\n' "$(pkg_cmd "${miss[@]}")"
         exit 1
@@ -285,8 +287,9 @@ step_cmd() {
 
 step_icon() {
     local i k n prev=${ICON:-lavender} pv=()
+    [[ $prev == 3d ]] && prev=lavender
     if command -v chafa >/dev/null; then
-        pv=(--preview-window='right,45%,border-left' --preview "f=\$(case {1} in 3d) echo font-maniac.png;; *) echo font-maniac-{1}.svg;; esac); chafa -f symbols -s \${FZF_PREVIEW_COLUMNS}x\${FZF_PREVIEW_LINES} \"$SRC/icons/\$f\" 2>/dev/null || echo 'No preview for this one.'")
+        pv=(--preview-window='right,45%,border-left' --preview "chafa -f symbols -s \${FZF_PREVIEW_COLUMNS}x\${FZF_PREVIEW_LINES} \"$SRC/icons/font-maniac-{1}.svg\" 2>/dev/null || echo 'No preview for this one.'")
     fi
     ICON=$( {
         for ((i = 0; i < ${#ICONS[@]}; i += 2)); do
@@ -294,7 +297,7 @@ step_icon() {
         done
         for ((i = 0; i < ${#ICONS[@]}; i += 2)); do
             k=${ICONS[i]} n=${ICONS[i+1]}
-            [[ $k == "$prev" ]] || row "$k" "$n" "$([[ $k == 3d ]] && echo "soft 3D render" || echo "flat, sharp at every size")"
+            [[ $k == "$prev" ]] || row "$k" "$n" ""
         done
     } | menu "Pick an icon" "For the app menu, dock and browser tab. Change it any time: run the installer and pick Update.   $HINT" "${pv[@]}"
     ) || { ICON=$prev; return 1; }

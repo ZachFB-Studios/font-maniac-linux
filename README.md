@@ -68,8 +68,7 @@ The installer walks you through it step by step:
 3. **Google Fonts.** Download now (1.3 GB download, about 4 GB on disk) or later from Settings.
 4. **App menu entry.** Works on every distro and desktop: GNOME, KDE, XFCE, Hyprland/Sway launchers
    (rofi, wofi, fuzzel, walker), all of them.
-5. **Icon.** Pick one of six colours (Lavender, Peach, Mint, Sky, Butter, Blush) or the soft 3D
-   one. Change it any time: run the installer again and pick **Update**.
+5. **Icon.** Pick one of six colours (Lavender, Peach, Mint, Sky, Butter, Blush). Change it any time: run the installer again and pick **Update**.
 6. **A `font-maniac` terminal command**, if you want one.
 
 Then it sets up its own Python environment inside the app folder and indexes your fonts, so the first
@@ -87,7 +86,7 @@ never touched.
 | | |
 |---|---|
 | **Required** | `python3` (3.8+, with `venv`), `fzf`, `curl`, `fontconfig` |
-| **Recommended** | A Chromium-based browser (Chromium, Chrome, Brave, Edge or Vivaldi) so it opens in its own window. Without one it opens as a tab in your normal browser. |
+| **Recommended** | Chromium. Fallback: Chrome, Brave, Edge, Vivaldi, Thorium, Opera (Flatpak supported), then your default browser |
 | **Optional** | `git` for Google Fonts, `kdialog` or `zenity` for the Browse… buttons |
 
 The installer checks all of this and gives you the exact install command for your distro if something
