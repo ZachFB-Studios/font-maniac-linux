@@ -20,7 +20,8 @@ CFG = fc.config()
 LIB = CFG["library"].rstrip("/") or "/"
 ENABLE_DIR = Path(CFG["enable_dir"])
 WEB = fc.APP / "web"
-MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}
+MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
+        ".png": "image/png"}
 
 _local = threading.local()
 _lock = threading.Lock()
@@ -397,8 +398,8 @@ class Handler(BaseHTTPRequestHandler):
                 if f.parent != WEB.resolve() or not f.is_file():
                     return self.send({"error": "not found"}, code=404)
                 return self.send(f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"))
-            if p == "/icon.svg":
-                return self.send((fc.APP / "icons/font-maniac.svg").read_bytes(), MIME[".svg"])
+            if p == "/icon.png":
+                return self.send((fc.APP / "icons/font-maniac.png").read_bytes(), MIME[".png"], "max-age=86400")
             if p == "/api/fonts":
                 return self.send(fonts_payload())
             if p == "/api/status":

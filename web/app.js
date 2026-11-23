@@ -598,7 +598,7 @@ async function theme() {
       "outline-var": "outline_variant", primary: "primary", "on-primary": "on_primary", pc: "primary_container",
       "on-pc": "on_primary_container", sc: "secondary_container", "on-sc": "on_secondary_container", err: "error" };
     for (const [k, v] of Object.entries(map)) if (c[v]) root.style.setProperty("--" + k, c[v]);
-    $("#favicon").href = "/icon.svg?t=" + Date.now();
+    $("#favicon").href = "/icon.png";
   } catch { /* keep defaults */ }
 }
 

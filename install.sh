@@ -20,7 +20,7 @@ CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/font-maniac
 RECORD=$CONF_DIR/install.conf
 BIN_DIR=${FM_BIN_DIR:-$HOME/.local/bin}
 APPS_DIR=$DATA/applications
-ICON_DIR=$DATA/icons/hicolor/scalable/apps
+ICON_DIR=$DATA/icons/hicolor/512x512/apps
 ENABLE_DIR=$DATA/fonts/FontManiac
 APP_FILES=(fontcore.py index.py server.py run.sh install.sh requirements.txt README.md LICENSE web icons)
 GOOGLE_URL=https://github.com/google/fonts
@@ -393,7 +393,7 @@ do_install() {
         bad "Indexing hit a problem (see $(tilde "$APP")/cache/install-index.log). The app will retry when it starts."
     fi
 
-    mkdir -p "$ICON_DIR" && cp "$APP/icons/font-maniac.svg" "$ICON_DIR/font-maniac.svg"
+    mkdir -p "$ICON_DIR" && cp "$APP/icons/font-maniac.png" "$ICON_DIR/font-maniac.png"
     if [[ $LAUNCHER == yes ]]; then
         mkdir -p "$APPS_DIR"
         cat >"$APPS_DIR/font-maniac.desktop" <<EOF
@@ -403,7 +403,7 @@ Name=Font Maniac
 GenericName=Font Manager
 Comment=Browse, filter and enable fonts from a big collection
 Exec="$APP/run.sh"
-Icon=$ICON_DIR/font-maniac.svg
+Icon=$ICON_DIR/font-maniac.png
 Categories=Graphics;Utility;
 Keywords=font;fonts;typeface;typography;google fonts;
 Terminal=false
@@ -425,7 +425,7 @@ EOF
     [[ $LAUNCHER == yes ]] && dim "Open it from your app menu" || dim "Start it with $(tilde "$APP")/run.sh"
     [[ $CMD == yes ]] && dim "or type font-maniac in a terminal."
     dim "Run this installer again any time to update or change settings."
-    command -v notify-send >/dev/null && notify-send -i "$ICON_DIR/font-maniac.svg" "Font Maniac" "Installed" 2>/dev/null
+    command -v notify-send >/dev/null && notify-send -i "$ICON_DIR/font-maniac.png" "Font Maniac" "Installed" 2>/dev/null
     key
 }
 
@@ -452,7 +452,7 @@ do_uninstall() {
     ) | grep -qx go || exit 0
 
     title "Uninstalling Font Maniac"
-    del "$APPS_DIR/font-maniac.desktop" "$ICON_DIR/font-maniac.svg"
+    del "$APPS_DIR/font-maniac.desktop" "$ICON_DIR/font-maniac.png"
     [[ -L $BIN_DIR/font-maniac ]] && del "$BIN_DIR/font-maniac"
     if [[ -d $ENABLE_DIR ]]; then
         if ((DRY)); then del "$n link$(plural "$n") in $ENABLE_DIR"
