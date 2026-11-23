@@ -20,6 +20,7 @@ DEFAULTS = {
     "library": str(Path.home() / "Fonts"),
     "enable_dir": str(Path.home() / ".local/share/fonts/FontManiac"),
     "port": 8747,
+    "icon": "font-maniac-lavender.svg",  # file in icons/, picked in install.sh
     "browser": "",           # empty = first Chromium-family browser found (see run.sh)
 }
 

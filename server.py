@@ -398,8 +398,11 @@ class Handler(BaseHTTPRequestHandler):
                 if f.parent != WEB.resolve() or not f.is_file():
                     return self.send({"error": "not found"}, code=404)
                 return self.send(f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"))
-            if p == "/icon.png":
-                return self.send((fc.APP / "icons/font-maniac.png").read_bytes(), MIME[".png"], "max-age=86400")
+            if p in ("/icon", "/icon.png", "/icon.svg"):
+                f = fc.APP / "icons" / Path(CFG.get("icon") or fc.DEFAULTS["icon"]).name
+                if not f.is_file():
+                    f = fc.APP / "icons" / fc.DEFAULTS["icon"]
+                return self.send(f.read_bytes(), MIME.get(f.suffix, "application/octet-stream"))
             if p == "/api/fonts":
                 return self.send(fonts_payload())
             if p == "/api/status":

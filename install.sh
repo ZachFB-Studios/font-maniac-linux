@@ -8,7 +8,7 @@
 #   - copies the app (or runs it from this folder), makes a Python venv inside it
 #     (fonttools, pillow, brotli), and writes config.json
 #   - indexes your fonts once, so the first start is instant
-#   - adds an app-menu entry + icon and an optional `font-maniac` command
+#   - adds an app-menu entry with the icon you pick and an optional `font-maniac` command
 # Run it again to update or change settings; `./install.sh --uninstall` removes everything it
 # added. Your font files are never moved, changed or deleted.
 set -uo pipefail
@@ -24,6 +24,9 @@ ICON_DIR=$DATA/icons/hicolor/512x512/apps
 ENABLE_DIR=$DATA/fonts/FontManiac
 APP_FILES=(fontcore.py index.py server.py run.sh install.sh requirements.txt README.md LICENSE web icons)
 GOOGLE_URL=https://github.com/google/fonts
+# key, name: the icons in icons/ (make them with dev/make-icons.py)
+ICONS=(lavender Lavender peach Peach mint Mint sky Sky butter Butter blush Blush 3d "3D cards")
+icon_file() { [[ $1 == 3d ]] && echo font-maniac.png || echo "font-maniac-$1.svg"; }
 DRY=0
 
 # ------------------------------------------------ colours (Material 3 palette if this desktop has one)
@@ -82,10 +85,11 @@ FZF=(fzf --ansi --layout=reverse --height=100% --border="$BORDER" --margin=1,2 -
 # row KEY NAME [DETAILS]
 row() { printf '%s\t%s%s%s%s   %s%s%s\n' "$1" "$(fg "$P")" "$B" "$2" "$R" "$(fg "$ONV")" "${3:-}" "$R"; }
 
-# menu TITLE HEADER < rows   → prints the chosen key; returns 1 on Esc
+# menu TITLE HEADER [fzf args…] < rows   → prints the chosen key; returns 1 on Esc
 menu() {
-    local out
-    out=$("${FZF[@]}" --border-label=" $1 " --header="$2"$'\n') || return 1
+    local out t=$1 h=$2
+    shift 2
+    out=$(SHELL=bash "${FZF[@]}" "$@" --border-label=" $t " --header="$h"$'\n') || return 1
     printf '%s' "${out%%$'\t'*}"
 }
 HINT='Enter  choose     Esc  back'
@@ -279,8 +283,25 @@ step_cmd() {
     CMD=$pick
 }
 
+step_icon() {
+    local i k n prev=${ICON:-lavender} pv=()
+    if command -v chafa >/dev/null; then
+        pv=(--preview-window='right,45%,border-left' --preview "f=\$(case {1} in 3d) echo font-maniac.png;; *) echo font-maniac-{1}.svg;; esac); chafa -f symbols -s \${FZF_PREVIEW_COLUMNS}x\${FZF_PREVIEW_LINES} \"$SRC/icons/\$f\" 2>/dev/null || echo 'No preview for this one.'")
+    fi
+    ICON=$( {
+        for ((i = 0; i < ${#ICONS[@]}; i += 2)); do
+            [[ ${ICONS[i]} == "$prev" ]] && row "${ICONS[i]}" "${ICONS[i+1]}" "current"
+        done
+        for ((i = 0; i < ${#ICONS[@]}; i += 2)); do
+            k=${ICONS[i]} n=${ICONS[i+1]}
+            [[ $k == "$prev" ]] || row "$k" "$n" "$([[ $k == 3d ]] && echo "soft 3D render" || echo "flat, sharp at every size")"
+        done
+    } | menu "Pick an icon" "For the app menu, dock and browser tab. Change it any time: run the installer and pick Update.   $HINT" "${pv[@]}"
+    ) || { ICON=$prev; return 1; }
+}
+
 step_confirm() {
-    local g
+    local g i
     case $GOOGLE in now) g="download now" ;; update) g="update now" ;; *) g="later" ;; esac
     menu "Ready to install" "Esc  back" < <(
         row go "Install" "Enter"
@@ -290,6 +311,7 @@ step_confirm() {
         row - "Google Fonts" "$g"
         row - "App menu" "$LAUNCHER"
         row - "Command" "$CMD"
+        row - "Icon" "$(for ((i = 0; i < ${#ICONS[@]}; i += 2)); do [[ ${ICONS[i]} == "$ICON" ]] && echo "${ICONS[i+1]}"; done)"
         row - "Enabled fonts" "linked into $(tilde "$ENABLE_DIR")"
     ) | grep -qx go || return 1
 }
@@ -328,14 +350,14 @@ index_progress() {
 }
 
 write_config() {
-    "$APP/.venv/bin/python" - "$APP/config.json" "$LIB" "$ENABLE_DIR" <<'EOF'
+    "$APP/.venv/bin/python" - "$APP/config.json" "$LIB" "$ENABLE_DIR" "$(icon_file "$ICON")" <<'EOF'
 import json, os, sys
-path, lib, enable = sys.argv[1:]
+path, lib, enable, icon = sys.argv[1:]
 try:
     cfg = json.load(open(path))
 except (OSError, ValueError):
     cfg = {}
-cfg.update(library=lib, enable_dir=enable)
+cfg.update(library=lib, enable_dir=enable, icon=icon)
 cfg.setdefault("google_root", lib)
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
@@ -393,7 +415,7 @@ do_install() {
         bad "Indexing hit a problem (see $(tilde "$APP")/cache/install-index.log). The app will retry when it starts."
     fi
 
-    mkdir -p "$ICON_DIR" && cp "$APP/icons/font-maniac.png" "$ICON_DIR/font-maniac.png"
+    local icon_path="$APP/icons/$(icon_file "$ICON")"
     if [[ $LAUNCHER == yes ]]; then
         mkdir -p "$APPS_DIR"
         cat >"$APPS_DIR/font-maniac.desktop" <<EOF
@@ -403,14 +425,14 @@ Name=Font Maniac
 GenericName=Font Manager
 Comment=Browse, filter and enable fonts from a big collection
 Exec="$APP/run.sh"
-Icon=$ICON_DIR/font-maniac.png
+Icon=$icon_path
 Categories=Graphics;Utility;
 Keywords=font;fonts;typeface;typography;google fonts;
 Terminal=false
 StartupWMClass=chrome-127.0.0.1__-Default
 EOF
         command -v update-desktop-database >/dev/null && update-desktop-database -q "$APPS_DIR" 2>/dev/null
-        ok "Added Font Maniac to the app menu"
+        ok "Added Font Maniac to the app menu (icon: $(icon_file "$ICON"))"
     elif [[ -f $APPS_DIR/font-maniac.desktop ]]; then
         mv -f "$APPS_DIR/font-maniac.desktop" "$CONF_DIR/font-maniac.desktop.off" 2>/dev/null
     fi
@@ -419,13 +441,13 @@ EOF
     fi
 
     mkdir -p "$CONF_DIR"
-    { printf 'APP=%q\nLIB=%q\nLAUNCHER=%q\nCMD=%q\n' "$APP" "$LIB" "$LAUNCHER" "$CMD"; } >"$RECORD"
+    { printf 'APP=%q\nLIB=%q\nLAUNCHER=%q\nCMD=%q\nICON=%q\n' "$APP" "$LIB" "$LAUNCHER" "$CMD" "$ICON"; } >"$RECORD"
 
     echo; ok "Font Maniac is installed"
     [[ $LAUNCHER == yes ]] && dim "Open it from your app menu" || dim "Start it with $(tilde "$APP")/run.sh"
     [[ $CMD == yes ]] && dim "or type font-maniac in a terminal."
     dim "Run this installer again any time to update or change settings."
-    command -v notify-send >/dev/null && notify-send -i "$ICON_DIR/font-maniac.png" "Font Maniac" "Installed" 2>/dev/null
+    command -v notify-send >/dev/null && notify-send -i "$icon_path" "Font Maniac" "Installed" 2>/dev/null
     key
 }
 
@@ -452,7 +474,8 @@ do_uninstall() {
     ) | grep -qx go || exit 0
 
     title "Uninstalling Font Maniac"
-    del "$APPS_DIR/font-maniac.desktop" "$ICON_DIR/font-maniac.png"
+    del "$APPS_DIR/font-maniac.desktop"
+    [[ -f $ICON_DIR/font-maniac.png ]] && del "$ICON_DIR/font-maniac.png"
     [[ -L $BIN_DIR/font-maniac ]] && del "$BIN_DIR/font-maniac"
     if [[ -d $ENABLE_DIR ]]; then
         if ((DRY)); then del "$n link$(plural "$n") in $ENABLE_DIR"
@@ -492,7 +515,7 @@ done
 check_deps
 [[ $ACTION == uninstall ]] && { do_uninstall; exit 0; }
 
-APP="" LIB="" GOOGLE=later LAUNCHER=yes CMD=no
+APP="" LIB="" GOOGLE=later LAUNCHER=yes CMD=no ICON=lavender
 if [[ -f $RECORD ]]; then
     # shellcheck disable=SC1090
     source "$RECORD"
@@ -507,6 +530,7 @@ if [[ -f $RECORD ]]; then
     } | menu "Font Maniac is already installed" "$HINT") || exit 0
     case $pick in
         update) [[ -d $APP ]] || { title "Update"; bad "$(tilde "$APP") is gone; choose Change settings."; key; exit 1; }
+                step_icon || { clear; echo "Nothing was changed."; exit 0; }
                 do_install; exit 0 ;;
         remove) do_uninstall; exit 0 ;;
     esac
@@ -519,7 +543,7 @@ if ((${#OPTIONAL[@]})); then
     key
 fi
 
-steps=(step_app step_lib step_google step_launcher step_cmd step_confirm)
+steps=(step_app step_lib step_google step_launcher step_icon step_cmd step_confirm)
 i=0 BACKING=0
 while ((i < ${#steps[@]})); do
     ${steps[i]}
