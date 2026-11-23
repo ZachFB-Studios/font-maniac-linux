@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Font Maniac</title>
+<link rel="icon" id="favicon" href="/icon.svg">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header id="top">
+    <select id="folder" title="Top-level folder"><option value="">All folders</option></select>
+    <span id="count"></span>
+    <button id="rescan" class="tonal" title="Look for new or changed fonts">Rescan</button>
+  <div class="seg" id="view"><button data-v="families" class="on">Families</button><button data-v="styles">Styles</button></div>
+  <button id="gear" class="icon big" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.3 7.3 0 0 0-1.7-1l-.4-2.7a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.7a7.6 7.6 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.7c0 .2.2.4.5.4h4c.3 0 .5-.2.5-.4l.4-2.7a7.3 7.3 0 0 0 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></button>
+  <div id="progress"><div></div></div>
+</header>
+
+<main>
+  <aside id="left">
+    <div class="field preview"><svg viewBox="0 0 24 24"><path d="M5 4v3h5.5v12h3V7H19V4z"/></svg>
+      <input id="text" placeholder="Preview text" autocomplete="off" spellcheck="false"></div>
+    <div id="filters"></div>
+  </aside>
+  <div id="center">
+    <div id="bar2">
+  <div class="field search"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+    <input id="q" placeholder="Search names   ·   in:folder   ( / )" autocomplete="off" spellcheck="false"></div>
+  <label class="slider" title="Tile size"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+    <input id="size" type="range" min="28" max="160" value="56"></label>
+  <select id="sort" title="Sort">
+    <option value="name">Name</option>
+    <option value="weight">Weight (measured)</option>
+    <option value="contrast">Contrast</option>
+    <option value="xh">x-height</option>
+    <option value="wr">Width</option>
+    <option value="newest">Newest</option>
+    <option value="folder">Folder</option>
+    <option value="similar" hidden>Similar</option>
+  </select>
+    </div>
+    <section id="grid"><div id="sizer"></div><div id="empty" hidden>No fonts match these filters.</div></section>
+  </div>
+  <aside id="drawer" hidden></aside>
+</main>
+<dialog id="settings">
+  <form method="dialog">
+    <div class="head"><h2>Settings</h2><button class="close" value="cancel" title="Close (Esc)">
+      <svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg></button></div>
+
+    <h3>Fonts location</h3>
+    <p class="hint">The library folder that gets indexed. Changing it starts a rescan.</p>
+    <div class="pathrow"><div class="field"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8z"/></svg>
+      <input id="set-lib" autofocus autocomplete="off" spellcheck="false"></div>
+      <button type="button" class="tonal" data-pick="set-lib">Browse…</button></div>
+
+    <h3>Google Fonts</h3>
+    <p class="hint">Downloads <code>github.com/google/fonts</code> into a <code>Google</code> folder inside this root
+      (shallow git clone, no API key). Use the fonts location to get them indexed.</p>
+    <div class="pathrow"><div class="field"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8z"/></svg>
+      <input id="set-groot" autocomplete="off" spellcheck="false"></div>
+      <button type="button" class="tonal" data-pick="set-groot">Browse…</button>
+      <button type="button" class="text" id="set-same" title="Use the fonts location">Same as library</button></div>
+    <div class="gf">
+      <button type="button" class="filled" id="gf-btn">Download Google Fonts</button>
+      <div class="gf-info"><span id="gf-state"></span><div class="bar" id="gf-bar" hidden><div></div></div></div>
+    </div>
+
+    <div class="foot"><button class="text" value="cancel">Cancel</button>
+      <button class="filled" value="save" id="set-save">Save</button></div>
+  </form>
+</dialog>
+<div id="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+# Font Maniac
+
+**A font manager for Linux that doesn't suck.**
+
+<!-- MEDIA: hero video / GIF here -->
+
+Have you ever tried to use the default Linux font manager? It struggles and freezes with just a small
+number of fonts.
+
+The freemium option? Doesn't even work well, and when I enable fonts in that app, they don't show up on
+my system. And you want to sort your fonts or use some basic feature? Paywall.
+
+So font managers on Linux suck. They crawl to a halt and can't browse any large collection. Claude
+one-shot this in like 5 minutes. I had to move a few buttons and UI elements around, but it's imo the
+only good font manager for Linux.
+
+<!-- MEDIA: side-by-side video, the other apps choking vs. Font Maniac scrolling a huge library -->
+
+## The big flexes
+
+- **Huge libraries, no freezing.** Built and tested on a 27,000-font collection. The whole library is
+  indexed once (about 20 seconds for 27k files on a desktop CPU); after that it opens instantly and only
+  picks up new or changed fonts.
+- **Google Fonts built in.** One button downloads every Google font (over 2,000 families), and another
+  keeps them updated. You can filter by Google's own categories and by licence.
+- **Enable a whole family in one click.** Every weight and style at once. Try getting a whole family
+  picked for download on Google's website: it's hard af.
+- **Enabled means enabled.** Fonts show up in every app right away, with nothing copied and nothing
+  moved.
+
+<!-- MEDIA: screenshot of the family drawer + Enable family -->
+
+## Everything else
+
+- Filters by **measured shape**: serif, sans, slab, script, mono, display, plus weight, contrast,
+  x-height, width and slant, read from the actual letters, not just the font's name
+- Filters by **writing system**: Latin, Cyrillic, Greek, Arabic, Hebrew, CJK, Japanese, Korean, Thai and
+  more
+- Your own **preview text** and tile size
+- **Search** by family, style or file name; `in:word` searches folder names
+- Browse by **folder**, sort by name, weight, contrast, x-height, width, newest or folder
+- Finds **duplicate files** anywhere in your collection
+- Reads TTF, OTF, TTC/OTC, WOFF and WOFF2
+- Light and dark mode (follows your system)
+- Your fonts are never moved, renamed or deleted
+
+<!-- MEDIA: screenshot of filters -->
+
+## Install
+
+```bash
+git clone https://github.com/ZachFB-Studios/font-maniac-linux.git
+cd font-maniac-linux
+./install.sh
+```
+
+The installer walks you through it step by step:
+
+1. **Where the app goes.** `~/.local/share/font-maniac` is recommended, or run it straight from the
+   folder you cloned.
+2. **Where your font collection lives.** This is where your full font collection is stored, for
+   browsing: every font you own, in any subfolders you like (another drive is fine). `~/Fonts` is
+   the suggested spot. Nothing in it gets moved or installed. Fonts you switch on are linked into
+   `~/.local/share/fonts/FontManiac`, the standard per-user font folder every distro reads.
+3. **Google Fonts.** Download now (1.3 GB download, about 4 GB on disk) or later from Settings.
+4. **App menu entry.** Works on every distro and desktop: GNOME, KDE, XFCE, Hyprland/Sway launchers
+   (rofi, wofi, fuzzel, walker), all of them.
+5. **A `font-maniac` terminal command**, if you want one.
+
+Then it sets up its own Python environment inside the app folder and indexes your fonts, so the first
+start is instant.
+
+**Update:** `git pull`, then `./install.sh` and pick **Update**. Your settings are kept.
+
+**Uninstall:** `./install.sh --uninstall` (add `--dry-run` to see what it would remove first). It
+removes the app, the menu entry, the command and the links for fonts you enabled. Your font files are
+never touched.
+
+### What you need
+
+| | |
+|---|---|
+| **Required** | `python3` (3.8+, with `venv`), `fzf`, `curl`, `fontconfig` |
+| **Recommended** | A Chromium-based browser (Chromium, Chrome, Brave, Edge or Vivaldi) so it opens in its own window. Without one it opens as a tab in your normal browser. |
+| **Optional** | `git` for Google Fonts, `kdialog` or `zenity` for the Browse… buttons |
+
+The installer checks all of this and gives you the exact install command for your distro if something
+is missing. On Debian/Ubuntu that's usually:
+
+```bash
+sudo apt install python3-venv fzf curl
+```
+
+## How it works
+
+- Font Maniac is a small local server (Python, only on `127.0.0.1`) plus a web UI in an app window.
+  Closing the window stops the server.
+- Index and thumbnails live in `cache/` inside the app folder; settings live in `config.json` there.
+  Change the fonts folder any time from Settings (gear icon, top right).
+- **Enable** puts a link to the font in `~/.local/share/fonts/FontManiac/` and refreshes fontconfig.
+  That's the standard per-user font folder on every distro, so every app sees it. **Disable** removes
+  only that link.
+- **Google Fonts** is a shallow `git clone` of
+  [github.com/google/fonts](https://github.com/google/fonts) into `<fonts folder>/Google`. **Update**
+  is a `git pull`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
