@@ -206,8 +206,9 @@ function buildFilters() {
     folders.map(f => `<option${f === S.f.folder ? " selected" : ""}>${esc(f)}</option>`).join("");
   $("#filters").innerHTML =
     chipGroup("Category", "cats", CATS) +
-    `<h3>Weight</h3><div class="range2"><input type="range" id="wmin" min="100" max="900" step="100" value="${S.f.wmin}">
-      <input type="range" id="wmax" min="100" max="900" step="100" value="${S.f.wmax}"><span id="wlab"></span></div>` +
+    `<h3>Weight</h3><div class="range2"><span class="lab" id="wlab"></span><div class="pair">
+      <input type="range" id="wmin" min="100" max="900" step="100" value="${S.f.wmin}">
+      <input type="range" id="wmax" min="100" max="900" step="100" value="${S.f.wmax}"></div></div>` +
     chipGroup("Width", "width", BUCKETS.width) +
     chipGroup("Contrast", "contrast", BUCKETS.contrast) +
     chipGroup("x-height", "xh", BUCKETS.xh) +

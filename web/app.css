@@ -46,8 +46,15 @@ input[type=range] { accent-color: var(--primary); width: 110px; }
 .seg button + button { border-left: 1px solid var(--outline); }
 .seg button.on { background: var(--sc); color: var(--on-sc); }
 select {
-  background: var(--s3); border: 0; border-radius: 20px; height: 36px; padding: 0 12px; cursor: pointer;
+  background: var(--s3); border: 0; border-radius: 20px; height: 36px; padding: 0 34px 0 14px; cursor: pointer;
+  appearance: none; -webkit-appearance: none; text-overflow: ellipsis;
+  /* own chevron (two gradient halves of a 'v') so it sits inside the pill with the same inset as the text */
+  --chev: transparent calc(50% - .9px), currentColor calc(50% - .9px), currentColor calc(50% + .9px), transparent calc(50% + .9px);
+  background-image: linear-gradient(45deg, var(--chev)), linear-gradient(135deg, var(--chev));
+  background-position: calc(100% - 20px) 55%, calc(100% - 14px) 55%;
+  background-size: 6px 6px; background-repeat: no-repeat;
 }
+select option { background: var(--s3); color: var(--on); }
 #count { color: var(--on-var); min-width: 9ch; text-align: right; font-variant-numeric: tabular-nums; }
 button.tonal, button.filled, button.text {
   border: 0; border-radius: 20px; height: 36px; padding: 0 16px; cursor: pointer; white-space: nowrap;
@@ -80,8 +87,10 @@ main { flex: 1; display: flex; min-height: 0; }
 .chip.on { background: var(--sc); color: var(--on-sc); border-color: transparent; }
 .chip.on small { color: var(--on-sc); opacity: .8; }
 .chip.zero { opacity: .45; }
-.range2 { display: flex; align-items: center; gap: 8px; color: var(--on-var); font-size: 13px; }
-.range2 input { width: 90px; }
+.range2 { display: flex; flex-direction: column; gap: 4px; color: var(--on-var); font-size: 13px; }
+.range2 .lab { font-variant-numeric: tabular-nums; }
+.range2 .pair { display: flex; gap: 10px; }
+.range2 input { flex: 1; min-width: 0; width: auto; margin: 0; }
 #filters select { width: 100%; }
 .clearall { margin-top: 18px; width: 100%; justify-content: center; }
 
@@ -185,8 +194,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #settings .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 
 /* ---------- scrollbars: track darker than the container, pill darker still */
-:root { --sb-ink: #000; }
-:root[data-theme="light"] { --sb-ink: var(--on); }
+:root { --sb-ink: var(--on); } /* --on flips with the theme: dark ink on light, light ink on dark (black ink vanished in dark mode) */
 :root { --sb-track: color-mix(in srgb, var(--s1), var(--sb-ink) 9%); --sb-thumb: color-mix(in srgb, var(--s1), var(--sb-ink) 28%); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--sb-track); border-radius: 5px; }
