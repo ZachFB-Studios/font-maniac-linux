@@ -600,6 +600,9 @@ async function theme() {
       "on-pc": "on_primary_container", sc: "secondary_container", "on-sc": "on_secondary_container", err: "error" };
     for (const [k, v] of Object.entries(map)) if (c[v]) root.style.setProperty("--" + k, c[v]);
     $("#favicon").href = "/icon";
+    const ink = getComputedStyle(root).getPropertyValue("--on").trim();
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='${ink}' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>`;
+    root.style.setProperty("--chev-img", `url("data:image/svg+xml,${encodeURIComponent(svg)}")`);
   } catch { /* keep defaults */ }
 }
 
