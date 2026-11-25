@@ -271,8 +271,8 @@ step_tags() {
     command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 && gpu=1
     pick=$( {
         [[ $TAGS != no ]] && [[ -n $TAGS ]] && row "$TAGS" "Keep style search" "current: $([[ $TAGS == gpu ]] && echo NVIDIA GPU || echo CPU)"
-        [[ -n $gpu && $TAGS != gpu ]] && row gpu "Style search on the NVIDIA GPU" "about 3 GB download  ·  indexes 30,000 styles in a few minutes"
-        [[ $TAGS != cpu ]] && row cpu "Style search on the CPU" "about 1 GB download  ·  indexing is much slower, runs in the background"
+        [[ -n $gpu && $TAGS != gpu ]] && row gpu "Style search on the NVIDIA GPU" "about 3 GB download, 8.5 GB on disk  ·  indexes 30,000 styles in a few minutes"
+        [[ $TAGS != cpu ]] && row cpu "Style search on the CPU" "about 1 GB download, 3 GB on disk  ·  indexing takes hours, in the background"
         row no "No style search" "$([[ $TAGS == no ]] && echo "current  ·  ")name search and shape filters only"
     } | menu "Style search" "Search by look: type groovy 70s, horror or wedding and get fonts that look like it.   $HINT") || return 1
     TAGS=$pick
@@ -418,7 +418,7 @@ do_install() {
           "$APP/.venv/bin/python" -m pip install --upgrade --disable-pip-version-check -q -r "$APP/requirements-tags.txt"
         } >>"$APP/cache/install.log" 2>&1 &
         spin $! "Installing style search (PyTorch and the image-text model code, this is the big one)" &&
-            ok "Style search ready (the model, about 1.5 GB, downloads on its first run)" ||
+            ok "Style search ready (the model, 1.5 GB, downloads on its first run)" ||
             { tail -6 "$APP/cache/install.log" | sed 's/^/  /'; bad "Style search couldn't be installed; the rest works without it."; }
     fi
 

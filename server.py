@@ -234,7 +234,7 @@ def start_index(full=False):
 
 TAGS = {"model": None, "tok": None, "torch": None, "loading": False, "err": None, "used": 0,
         "stamp": None, "M": None, "faces": None, "qcache": OrderedDict()}
-_tags_lock = threading.Lock()
+_tags_load = threading.Lock()   # held for the whole model load, so a search during warm-up waits instead of loading a second copy
 PROMPTS = ("a {} font", "{} style lettering", "a {} typeface", "text set in a {} font")
 TAG_TOP = 1500            # faces returned per search, best first
 TAG_IDLE = 900            # seconds without a tag search before the text model is unloaded
@@ -269,9 +269,12 @@ def start_tagger(fast=False):
             return
         stop_tagger()                    # background run in progress: restart it at full speed
     _tagger_fast = fast
+    fc.CACHE.mkdir(exist_ok=True)
+    log = open(fc.CACHE / "tagger.log", "w")
     _tagger = subprocess.Popen([sys.executable, str(fc.APP / "tagger.py")] + (["--fast"] if fast else []),
-                               cwd=fc.APP, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               cwd=fc.APP, stdout=subprocess.DEVNULL, stderr=log,
                                start_new_session=True)   # own process group, so its render workers stop with it
+    log.close()                          # the child keeps its own copy
 
 
 def stop_tagger():
@@ -306,7 +309,7 @@ def tags_watch():
                 _tag_seen = stamp
                 start_tagger(False)
             if TAGS["model"] is not None and time.time() - TAGS["used"] > TAG_IDLE:
-                with _tags_lock:                 # unused for a while: give the RAM back
+                with _tags_load:                 # unused for a while: give the RAM back
                     TAGS.update(model=None, tok=None, M=None, faces=None, stamp=None)
                     TAGS["qcache"].clear()
                 import gc
@@ -318,30 +321,31 @@ def tags_watch():
 
 def tags_model():
     """Text half of the model, loaded on first use (CPU, so it never holds GPU memory)."""
-    with _tags_lock:
+    with _tags_load:
         if TAGS["model"] is not None:
-            return TAGS
+            return TAGS["model"], TAGS["tok"], TAGS["torch"]
         TAGS["loading"] = True
-    try:
-        model, _, tok, torch = tg.load_model("cpu")
-        model.visual = None              # only text is encoded here
-        import gc
-        gc.collect()
-        torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
-        TAGS.update(model=model, tok=tok, torch=torch, err=None)
-    except Exception as e:
-        TAGS["err"] = f"{type(e).__name__}: {e}"[:300]
-        raise
-    finally:
-        TAGS["loading"] = False
-    return TAGS
+        try:
+            model, _, tok, torch = tg.load_model("cpu")
+            model.visual = None              # only text is encoded here
+            torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
+            import gc
+            gc.collect()
+            TAGS.update(model=model, tok=tok, torch=torch, err=None)
+            return model, tok, torch
+        except Exception as e:
+            TAGS["err"] = f"{type(e).__name__}: {e}"[:300]
+            raise
+        finally:
+            TAGS["loading"] = False
 
 
 def tags_matrix():
     """Vectors from cache/tags.sqlite mapped to the current face ids; reloaded when either index changes."""
     import numpy as np
     stamp = tuple(f.stat().st_mtime if f.exists() else 0 for f in (tg.TAGS_STATUS, fc.STATUS))
-    if TAGS["stamp"] == stamp and TAGS["M"] is not None:
+    if TAGS["M"] is not None and (TAGS["stamp"] == stamp or            # unchanged, or the tagger is mid-run:
+                                  (tagger_running() and time.time() - TAGS.get("built", 0) < 10)):  # rebuild at most every 10 s
         return TAGS["M"], TAGS["faces"]
     ids = {}
     for fid, sha1, idx in db().execute("SELECT f.id, x.sha1, f.idx FROM faces f JOIN files x ON x.path = f.path"):
@@ -355,7 +359,7 @@ def tags_matrix():
             faces.append(f)
     tdb.close()
     M = np.stack(vecs).astype(np.float32) if vecs else np.zeros((0, 1), np.float32)
-    TAGS.update(stamp=stamp, M=M, faces=faces)
+    TAGS.update(stamp=stamp, M=M, faces=faces, built=time.time())
     return M, faces
 
 
@@ -367,10 +371,9 @@ def tags_search(q):
         return {"q": q, "hits": []}
     t = TAGS["qcache"].get(q)
     if t is None:
-        T = tags_model()
-        torch = T["torch"]
+        model, tok, torch = tags_model()      # local refs: the idle unload can't pull them away mid-encode
         with torch.no_grad():
-            e = T["model"].encode_text(T["tok"]([p.format(q) for p in PROMPTS])).float()
+            e = model.encode_text(tok([p.format(q) for p in PROMPTS])).float()
             e = torch.nn.functional.normalize(e, dim=-1).mean(0)
             t = (e / e.norm()).numpy().astype(np.float32)
         TAGS["qcache"][q] = t
