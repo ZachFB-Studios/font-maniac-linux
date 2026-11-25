@@ -41,7 +41,12 @@ svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
 }
 .field input { background: none; border: 0; outline: 0; color: var(--on); width: 100%; }
 .field:focus-within { outline: 2px solid var(--primary); }
-.search { flex: 2 1 260px; }
+.search { flex: 2 1 260px; padding-left: 6px; }
+#qmode {
+  height: 30px; border-radius: 15px; background-color: var(--s4); color: var(--on); flex: none;
+  padding: 0 28px 0 12px; background-position: right 10px center; font-size: 13px;
+}
+#qmode option:disabled { color: var(--outline); }
 .preview { flex: 1.5 1 200px; }
 .slider { display: flex; align-items: center; gap: 6px; color: var(--on-var); }
 input[type=range] { accent-color: var(--primary); width: 110px; }
@@ -209,3 +214,4 @@ main:has(> #drawer[hidden]) #center { margin-right: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--s1), var(--sb-ink) 40%); }
 ::-webkit-scrollbar-button { display: none; height: 0; }
 ::-webkit-scrollbar-corner { background: transparent; }
+.field.busy > svg { opacity: .35; }

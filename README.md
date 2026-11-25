@@ -29,6 +29,8 @@ https://github.com/user-attachments/assets/29b35264-9037-45ef-aa75-104f7b66a7ed
   picked for download on Google's website: it's hard af.
 - **Enabled means enabled.** Fonts show up in every app right away, with nothing copied and nothing
   moved.
+- **Search by look.** Switch the search box to **Tags** and type *groovy 70s*, *horror* or *wedding*:
+  you get fonts that look like it, whatever they're called. Optional, picked in the installer.
 
 <!-- MEDIA: screenshot of the family drawer + Enable family -->
 
@@ -87,7 +89,7 @@ never touched.
 |---|---|
 | **Required** | `python3` (3.8+, with `venv`), `fzf`, `curl`, `fontconfig` |
 | **Recommended** | Chromium. Fallback: Chrome, Brave, Edge, Vivaldi, Thorium, Opera (Flatpak supported), then your default browser |
-| **Optional** | `git` for Google Fonts, `kdialog` or `zenity` for the Browse… buttons |
+| **Optional** | `git` for Google Fonts, `kdialog` or `zenity` for the Browse… buttons, an NVIDIA GPU for fast style search |
 
 The installer checks all of this and gives you the exact install command for your distro if something
 is missing. On Debian/Ubuntu that's usually:
@@ -105,6 +107,9 @@ sudo apt install python3-venv fzf curl
 - **Enable** puts a link to the font in `~/.local/share/fonts/FontManiac/` and refreshes fontconfig.
   That's the standard per-user font folder on every distro, so every app sees it. **Disable** removes
   only that link.
+- **Style search** is a second index: each font is drawn on a card and turned into a vector by an
+  image-text model (SigLIP 2), so a typed description can be matched against how fonts look. It runs
+  in the background after each scan, or at full speed from Settings, where you can also turn it off.
 - **Google Fonts** is a shallow `git clone` of
   [github.com/google/fonts](https://github.com/google/fonts) into `<fonts folder>/Google`. **Update**
   is a `git pull`.

@@ -21,7 +21,7 @@ const LONG_SAMPLE = "The quick brown fox jumps over the lazy dog 0123456789";
 
 const S = {
   faces: [], families: new Map(), dirs: [], library: "", enabled: new Set(), gen: 0,
-  list: [], view: "families", sort: "name", similarTo: null, text: "", th: 56, sel: null,
+  list: [], view: "families", sort: "name", similarTo: null, qmode: "names", tagRank: null, tagQ: "", sortBefore: "name", tags: null, text: "", th: 56, sel: null,
   f: { q: "", cats: new Set(), scripts: new Set(), width: new Set(), contrast: new Set(), xh: new Set(),
        flags: new Set(), gcat: new Set(), lic: new Set(), wmin: 100, wmax: 900, folder: "" },
 };
@@ -82,7 +82,8 @@ const isOn = x => S.enabled.has(x.path);
 
 function matches(x, skip) {
   const f = S.f;
-  if (f.q) for (const w of f.qw) {
+  if (S.qmode === "tags") { if (S.tagRank && !S.tagRank.has(x.id)) return false; }
+  else if (f.q) for (const w of f.qw) {
     if (w.startsWith("in:") ? !x.dirl.includes(w.slice(3)) : !x.hay.includes(w)) return false;
   }
   if (skip !== "cats" && f.cats.size && !f.cats.has(x.cat)) return false;
@@ -135,7 +136,15 @@ const SORTS = {
   newest: (a, b) => b.x.added - a.x.added,
   folder: (a, b) => S.dirs[a.x.dir].localeCompare(S.dirs[b.x.dir]) || a.name.localeCompare(b.name),
   similar: (a, b) => a.d - b.d,
+  match: (a, b) => b.score - a.score || a.name.localeCompare(b.name),
 };
+
+// tags mode: rank by the best-matching face; a family tile shows that face
+function scoreItem(it) {
+  let best = -9;
+  for (const x of it.faces) { const s = S.tagRank.get(x.id) ?? -9; if (s > best) { best = s; if (S.view === "families") it.x = x; } }
+  it.score = best;
+}
 
 function apply() {
   const f = S.f;
@@ -156,6 +165,7 @@ function apply() {
     }
   }
   if (S.sort === "similar" && S.similarTo) for (const it of list) it.d = dist(S.similarTo, it.x);
+  if (S.tagRank) for (const it of list) scoreItem(it); else for (const it of list) it.score = 0;
   list.sort(SORTS[S.sort] || SORTS.name);
   S.list = list;
   $("#count").textContent = list.length.toLocaleString() + (S.view === "families" ? " families" : " styles");
@@ -423,6 +433,7 @@ async function setEnabled(paths, on) {
 
 function setSort(v) {
   S.sort = v;
+  $('#sort option[value="match"]').hidden = S.qmode !== "tags";
   const opt = $('#sort option[value="similar"]');
   opt.hidden = v !== "similar";
   if (v === "similar") opt.textContent = "Similar to " + S.similarTo.family;
@@ -430,7 +441,106 @@ function setSort(v) {
 }
 
 let qTimer, tTimer;
-$("#q").addEventListener("input", e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.f.q = e.target.value; apply(); }, 120); });
+$("#q").addEventListener("input", e => {
+  clearTimeout(qTimer);
+  if (S.qmode === "tags") qTimer = setTimeout(() => tagSearch(e.target.value), 350);
+  else qTimer = setTimeout(() => { S.f.q = e.target.value; apply(); }, 120);
+});
+
+// ------------------------------------------------------------------ style tags search
+
+const Q_PLACEHOLDER = { names: "Search names   ·   in:folder   ( / )", tags: "Describe a look   ·   groovy 70s, horror, wedding" };
+
+async function tagSearch(q) {
+  q = q.trim();
+  S.tagQ = q;
+  if (!q) { S.tagRank = null; return apply(); }
+  $("#q").parentElement.classList.add("busy");
+  try {
+    const r = await (await fetch("/api/tags?q=" + encodeURIComponent(q))).json();
+    if (S.tagQ !== q || S.qmode !== "tags") return;      // a newer query or a mode switch won
+    if (r.error) { toast(r.error.replace(/^\w+: /, "")); return; }
+    S.tagRank = new Map(r.hits);
+    grid.scrollTop = 0;
+    apply();
+  } finally { $("#q").parentElement.classList.remove("busy"); }
+}
+
+function setQmode(m) {
+  if (m === S.qmode) return;
+  S.qmode = m;
+  $("#qmode").value = m;
+  const q = $("#q");
+  q.placeholder = Q_PLACEHOLDER[m];
+  if (m === "tags") {
+    S.sortBefore = S.sort;
+    post("/api/tags", { action: "warm" }).then(tagsShow);
+    S.f.q = "";
+    setSort("match");
+    tagSearch(q.value);
+  } else {
+    S.tagRank = null; S.tagQ = "";
+    setSort(S.sortBefore === "match" ? "name" : S.sortBefore);
+    S.f.q = q.value;
+    apply();
+  }
+  q.focus();
+}
+$("#qmode").addEventListener("change", e => setQmode(e.target.value));
+
+// tag index state: Tags option label, placeholder progress, settings section; polls while the tagger runs
+let tagsPolling = false;
+function tagsShow(t) {
+  if (!t || t.error && !t.available) return;
+  S.tags = t;
+  const opt = $('#qmode option[value="tags"]');
+  opt.disabled = !t.searchable;
+  opt.textContent = !t.available ? "Tags (not installed)" : !t.searchable ? "Tags (indexing…)" : "Tags";
+  const part = t.running && t.total ? `   ·   ${t.done.toLocaleString()} / ${t.total.toLocaleString()} indexed` : "";
+  Q_PLACEHOLDER.tags = "Describe a look   ·   groovy 70s, horror, wedding" + part;
+  if (S.qmode === "tags") $("#q").placeholder = Q_PLACEHOLDER.tags;
+  if (dlg.open) tagsSettings(t);
+  if (t.running && !tagsPolling) tagsPoll();
+}
+async function tagsPoll() {
+  tagsPolling = true;
+  try {
+    while (true) {
+      await new Promise(r => setTimeout(r, 2000));
+      const t = await (await fetch("/api/tags")).json();
+      tagsShow(t);
+      if (!t.running) { if (S.qmode === "tags" && S.tagQ) tagSearch(S.tagQ); break; }
+    }
+  } finally { tagsPolling = false; }
+}
+function tagsSettings(t) {
+  for (const b of $("#set-tags").children) b.classList.toggle("on", b.dataset.v === (SET_TAGS ?? t.mode));
+  const fast = $("#tags-fast"), bar = $("#tags-bar"), lines = [];
+  fast.disabled = !t.available || (t.running && t.fast) || (!t.running && t.total && t.done >= t.total);
+  fast.textContent = t.running && t.fast ? "Running at full speed…" : "Full speed now";
+  bar.hidden = !t.running;
+  if (t.running) bar.firstChild.style.width = (t.total ? Math.max(2, 100 * t.done / t.total) : 2) + "%";
+  if (!t.available) lines.push("Not installed: run install.sh again and turn on Style search (about 3 GB download).");
+  else {
+    if (t.total) lines.push(`${t.done.toLocaleString()} of ${t.total.toLocaleString()} styles indexed` +
+      (t.running ? (t.fast ? " · full speed" : " · in the background") : ""));
+    else lines.push(t.running ? "Starting…" : "Nothing indexed yet");
+    if (t.error) lines.push(`<span class="err">${esc(t.error)}</span>`);
+  }
+  $("#tags-state").innerHTML = lines.map(l => l.startsWith("<") ? l : esc(l)).join("<br>");
+}
+let SET_TAGS = null;   // unsaved Background/Off choice in the dialog
+$("#set-tags").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  SET_TAGS = b.dataset.v;
+  if (S.tags) tagsSettings(S.tags);
+});
+$("#tags-fast").addEventListener("click", async () => {
+  const r = await post("/api/tags", { action: "fast" });
+  if (r.error) return toast(r.error.replace(/^\w+: /, ""));
+  tagsShow(r);
+});
 $("#text").addEventListener("input", e => {
   clearTimeout(tTimer);
   tTimer = setTimeout(() => { S.text = e.target.value.trim(); layout(true); if (S.sel) renderDrawer(); }, 300);
@@ -458,6 +568,7 @@ document.addEventListener("keydown", e => {
 
 let polling = false;
 async function status(st) {
+  if (st.tags) tagsShow(st.tags);
   const bar = $("#progress"), btn = $("#rescan");
   bar.classList.toggle("on", !!st.running);
   btn.disabled = !!st.running;
@@ -488,6 +599,9 @@ async function openSettings() {
   $("#set-lib").value = SET.library;
   $("#set-groot").value = SET.google_root;
   gfShow(SET);
+  SET_TAGS = null;
+  tagsShow(SET.tags);
+  tagsSettings(SET.tags);
   dlg.returnValue = "";
   dlg.showModal();
   if (SET.job.running) gfPoll();
@@ -566,7 +680,10 @@ $("#set-lib").addEventListener("input", () => { clearTimeout(rootTimer); rootTim
 
 dlg.addEventListener("close", async () => {
   if (dlg.returnValue !== "save") return;
-  const r = await post("/api/settings", { library: $("#set-lib").value.trim(), google_root: $("#set-groot").value.trim() });
+  const body = { library: $("#set-lib").value.trim(), google_root: $("#set-groot").value.trim() };
+  if (SET_TAGS) body.tags = SET_TAGS;
+  const r = await post("/api/settings", body);
+  if (r.tags) tagsShow(r.tags);
   if (r.error) { toast(r.error.replace(/^\w+: /, "")); return openSettings(); }
   if (r.rescan) {
     toast("Fonts location changed: rescanning");

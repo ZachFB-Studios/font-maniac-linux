@@ -1,0 +1,6 @@
+# Optional: style search (tagger.py). torch + torchvision come first from the PyTorch index (CUDA or CPU build),
+# install.sh does that; then these.
+open_clip_torch
+transformers
+sentencepiece
+numpy

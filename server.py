@@ -6,15 +6,18 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 import fontcore as fc
+import tagger as tg
 
 CFG = fc.config()
 LIB = CFG["library"].rstrip("/") or "/"
@@ -26,6 +29,9 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "
 _local = threading.local()
 _lock = threading.Lock()
 _indexer = None
+_tagger = None
+_tagger_fast = False
+_tag_seen = None          # status.json mtime the background tagger last ran after
 _fc_timer = None
 GOOGLE_URL = "https://github.com/google/fonts"
 _git = {"running": False, "action": "", "phase": "", "percent": 0, "msg": "", "ok": None}
@@ -114,6 +120,7 @@ def read_status():
     except (OSError, ValueError):
         st = {"state": "none"}
     st["running"] = _indexer is not None and _indexer.poll() is None
+    st["tags"] = tags_info()
     return st
 
 
@@ -223,6 +230,161 @@ def start_index(full=False):
                                 cwd=fc.APP, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+# ---------------------------------------------------------------- style tags (second index, see tagger.py)
+
+TAGS = {"model": None, "tok": None, "torch": None, "loading": False, "err": None, "used": 0,
+        "stamp": None, "M": None, "faces": None, "qcache": OrderedDict()}
+_tags_lock = threading.Lock()
+PROMPTS = ("a {} font", "{} style lettering", "a {} typeface", "text set in a {} font")
+TAG_TOP = 1500            # faces returned per search, best first
+TAG_IDLE = 900            # seconds without a tag search before the text model is unloaded
+
+
+def tags_mode():
+    return CFG.get("tags", "background")
+
+
+def tagger_running():
+    return _tagger is not None and _tagger.poll() is None
+
+
+def tags_info():
+    try:
+        st = json.loads(tg.TAGS_STATUS.read_text())
+    except (OSError, ValueError):
+        st = {"state": "none", "done": 0, "total": 0}
+    avail = tg.available()
+    return {"available": avail, "mode": tags_mode(), "running": tagger_running(), "fast": _tagger_fast and tagger_running(),
+            "state": st.get("state"), "done": st.get("done", 0), "total": st.get("total", 0),
+            "ready": TAGS["model"] is not None, "loading": TAGS["loading"], "error": TAGS["err"],
+            "searchable": avail and st.get("done", 0) > 0}
+
+
+def start_tagger(fast=False):
+    global _tagger, _tagger_fast
+    if not tg.available():
+        raise RuntimeError("Style search needs the optional packages (run install.sh and pick Style search)")
+    if tagger_running():
+        if _tagger_fast or not fast:
+            return
+        stop_tagger()                    # background run in progress: restart it at full speed
+    _tagger_fast = fast
+    _tagger = subprocess.Popen([sys.executable, str(fc.APP / "tagger.py")] + (["--fast"] if fast else []),
+                               cwd=fc.APP, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               start_new_session=True)   # own process group, so its render workers stop with it
+
+
+def stop_tagger():
+    global _tagger
+    if tagger_running():
+        import signal
+        try:
+            os.killpg(_tagger.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            _tagger.wait(10)
+        except subprocess.TimeoutExpired:
+            os.killpg(_tagger.pid, signal.SIGKILL)
+            _tagger.wait()
+        try:
+            st = json.loads(tg.TAGS_STATUS.read_text())
+            tg.status(**{**st, "state": "stopped"})
+        except (OSError, ValueError):
+            pass
+    _tagger = None
+
+
+def tags_watch():
+    """Background mode: run the tagger once after every finished index run (it skips faces already done)."""
+    global _tag_seen
+    while True:
+        try:
+            idle = _indexer is None or _indexer.poll() is not None
+            stamp = fc.STATUS.stat().st_mtime if fc.STATUS.exists() else 0
+            if tags_mode() == "background" and idle and not tagger_running() and stamp != _tag_seen and tg.available():
+                _tag_seen = stamp
+                start_tagger(False)
+            if TAGS["model"] is not None and time.time() - TAGS["used"] > TAG_IDLE:
+                with _tags_lock:                 # unused for a while: give the RAM back
+                    TAGS.update(model=None, tok=None, M=None, faces=None, stamp=None)
+                    TAGS["qcache"].clear()
+                import gc
+                gc.collect()
+        except Exception:
+            pass
+        threading.Event().wait(5)
+
+
+def tags_model():
+    """Text half of the model, loaded on first use (CPU, so it never holds GPU memory)."""
+    with _tags_lock:
+        if TAGS["model"] is not None:
+            return TAGS
+        TAGS["loading"] = True
+    try:
+        model, _, tok, torch = tg.load_model("cpu")
+        model.visual = None              # only text is encoded here
+        import gc
+        gc.collect()
+        torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
+        TAGS.update(model=model, tok=tok, torch=torch, err=None)
+    except Exception as e:
+        TAGS["err"] = f"{type(e).__name__}: {e}"[:300]
+        raise
+    finally:
+        TAGS["loading"] = False
+    return TAGS
+
+
+def tags_matrix():
+    """Vectors from cache/tags.sqlite mapped to the current face ids; reloaded when either index changes."""
+    import numpy as np
+    stamp = tuple(f.stat().st_mtime if f.exists() else 0 for f in (tg.TAGS_STATUS, fc.STATUS))
+    if TAGS["stamp"] == stamp and TAGS["M"] is not None:
+        return TAGS["M"], TAGS["faces"]
+    ids = {}
+    for fid, sha1, idx in db().execute("SELECT f.id, x.sha1, f.idx FROM faces f JOIN files x ON x.path = f.path"):
+        ids.setdefault((sha1, idx), []).append(fid)
+    tdb = sqlite3.connect(tg.TAGS_DB, timeout=30)
+    vecs, faces = [], []
+    for sha1, idx, v in tdb.execute("SELECT sha1, idx, v FROM emb"):
+        f = ids.get((sha1, idx))
+        if f:
+            vecs.append(np.frombuffer(v, np.float16))
+            faces.append(f)
+    tdb.close()
+    M = np.stack(vecs).astype(np.float32) if vecs else np.zeros((0, 1), np.float32)
+    TAGS.update(stamp=stamp, M=M, faces=faces)
+    return M, faces
+
+
+def tags_search(q):
+    import numpy as np
+    q = " ".join(q.lower().split())[:120]
+    TAGS["used"] = time.time()
+    if not q:
+        return {"q": q, "hits": []}
+    t = TAGS["qcache"].get(q)
+    if t is None:
+        T = tags_model()
+        torch = T["torch"]
+        with torch.no_grad():
+            e = T["model"].encode_text(T["tok"]([p.format(q) for p in PROMPTS])).float()
+            e = torch.nn.functional.normalize(e, dim=-1).mean(0)
+            t = (e / e.norm()).numpy().astype(np.float32)
+        TAGS["qcache"][q] = t
+        while len(TAGS["qcache"]) > 200:
+            TAGS["qcache"].popitem(last=False)
+    M, faces = tags_matrix()
+    if not len(M):
+        return {"q": q, "hits": []}
+    sc = M @ t
+    top = np.argsort(-sc)[:TAG_TOP]
+    hits = [[fid, round(float(sc[j]), 4)] for j in top for fid in faces[j]]
+    return {"q": q, "hits": hits}
+
+
 # ---------------------------------------------------------------- settings / Google Fonts
 
 def google_dir(root):
@@ -244,11 +406,11 @@ def settings(root=None, lib=None):
     lib_res = os.path.realpath(lib or LIB)
     g = google_info(root)
     g["in_library"] = os.path.realpath(g["path"]).startswith(lib_res.rstrip("/") + "/")
-    return {"library": LIB, "google_root": root, "google": g, "job": dict(_git)}
+    return {"library": LIB, "google_root": root, "google": g, "job": dict(_git), "tags": tags_info()}
 
 
 def save_settings(body):
-    global LIB
+    global LIB, _tag_seen
     out = {}
     for key in ("library", "google_root"):
         if key in body:
@@ -256,6 +418,10 @@ def save_settings(body):
             if not os.path.isabs(v) or not os.path.isdir(v):
                 raise ValueError(f"Not a folder: {v}")
             out[key] = v
+    if "tags" in body:
+        if body["tags"] not in ("background", "off"):
+            raise ValueError("tags must be background or off")
+        out["tags"] = body["tags"]
     try:
         file_cfg = json.loads(fc.CONFIG.read_text()) if fc.CONFIG.exists() else {}
     except ValueError:
@@ -265,6 +431,10 @@ def save_settings(body):
     tmp.write_text(json.dumps(file_cfg, indent=2) + "\n")
     os.replace(tmp, fc.CONFIG)
     CFG.update(out)
+    if out.get("tags") == "off":
+        stop_tagger()
+    elif out.get("tags") == "background":
+        _tag_seen = None                 # let tags_watch start a run
     changed = "library" in out and out["library"] != LIB
     if changed:
         LIB = out["library"]
@@ -411,6 +581,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(settings(q.get("root"), q.get("lib")))
             if p == "/api/google":
                 return self.send(dict(_git))
+            if p == "/api/tags":
+                return self.send(tags_search(q.get("q", "")) if q.get("q") else tags_info())
             if p == "/api/theme":
                 return self.send(theme())
             if p.startswith("/api/face/"):
@@ -451,6 +623,16 @@ class Handler(BaseHTTPRequestHandler):
                 if body.get("root"):
                     save_settings({"google_root": body["root"]})
                 return self.send(google_job(CFG.get("google_root") or LIB))
+            if p == "/api/tags":
+                a = body.get("action")
+                if a == "fast":
+                    start_tagger(True)
+                elif a == "stop":
+                    stop_tagger()
+                elif a == "warm" and tg.available() and TAGS["model"] is None and not TAGS["loading"]:
+                    TAGS["used"] = time.time()
+                    threading.Thread(target=lambda: (tags_model(), tags_matrix()), daemon=True).start()
+                return self.send(tags_info())
             if p == "/api/rescan":
                 start_index(bool(body.get("full")))
                 return self.send(read_status())
@@ -463,6 +645,7 @@ def main():
     port = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else CFG["port"]
     if "--no-scan" not in sys.argv:
         start_index()
+    threading.Thread(target=tags_watch, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.daemon_threads = True
     print(f"Font Maniac on http://127.0.0.1:{port}", flush=True)

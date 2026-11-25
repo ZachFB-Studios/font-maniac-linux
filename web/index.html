@@ -26,6 +26,7 @@
   <div id="center">
     <div id="bar2">
   <div class="field search"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+    <select id="qmode" title="Search by name, or by how the fonts look (style tags)"><option value="names">Names</option><option value="tags">Tags</option></select>
     <input id="q" placeholder="Search names   ·   in:folder   ( / )" autocomplete="off" spellcheck="false"></div>
   <label class="slider" title="Tile size"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
     <input id="size" type="range" min="28" max="160" value="56"></label>
@@ -38,6 +39,7 @@
     <option value="newest">Newest</option>
     <option value="folder">Folder</option>
     <option value="similar" hidden>Similar</option>
+    <option value="match" hidden>Best match</option>
   </select>
     </div>
     <section id="grid"><div id="sizer"></div><div id="empty" hidden>No fonts match these filters.</div></section>
@@ -65,6 +67,15 @@
     <div class="gf">
       <button type="button" class="filled" id="gf-btn">Download Google Fonts</button>
       <div class="gf-info"><span id="gf-state"></span><div class="bar" id="gf-bar" hidden><div></div></div></div>
+    </div>
+
+    <h3>Style search</h3>
+    <p class="hint">A second index of how every font looks, so the search box (switched to <b>Tags</b>) finds styles
+      from plain words: <i>groovy 70s</i>, <i>hippy</i>, <i>horror</i>, <i>western</i>, <i>wedding</i>.</p>
+    <div class="gf">
+      <div class="seg" id="set-tags"><button type="button" data-v="background">Background</button><button type="button" data-v="off">Off</button></div>
+      <button type="button" class="tonal" id="tags-fast" title="Index the rest now with the GPU at full speed">Full speed now</button>
+      <div class="gf-info"><span id="tags-state"></span><div class="bar" id="tags-bar" hidden><div></div></div></div>
     </div>
 
     <div class="foot"><button class="text" value="cancel">Cancel</button>

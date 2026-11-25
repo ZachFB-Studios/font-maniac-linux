@@ -22,7 +22,7 @@ BIN_DIR=${FM_BIN_DIR:-$HOME/.local/bin}
 APPS_DIR=$DATA/applications
 ICON_DIR=$DATA/icons/hicolor/512x512/apps
 ENABLE_DIR=$DATA/fonts/FontManiac
-APP_FILES=(fontcore.py index.py server.py run.sh install.sh requirements.txt README.md LICENSE web icons)
+APP_FILES=(fontcore.py index.py tagger.py server.py run.sh install.sh requirements.txt requirements-tags.txt README.md LICENSE web icons)
 GOOGLE_URL=https://github.com/google/fonts
 # key, name: the icons in icons/ (make them with dev/make-icons.py)
 ICONS=(lavender Lavender peach Peach mint Mint sky Sky butter Butter blush Blush)
@@ -266,6 +266,18 @@ step_google() {
     GOOGLE=$pick
 }
 
+step_tags() {
+    local pick gpu=""
+    command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 && gpu=1
+    pick=$( {
+        [[ $TAGS != no ]] && [[ -n $TAGS ]] && row "$TAGS" "Keep style search" "current: $([[ $TAGS == gpu ]] && echo NVIDIA GPU || echo CPU)"
+        [[ -n $gpu && $TAGS != gpu ]] && row gpu "Style search on the NVIDIA GPU" "about 3 GB download  ·  indexes 30,000 styles in a few minutes"
+        [[ $TAGS != cpu ]] && row cpu "Style search on the CPU" "about 1 GB download  ·  indexing is much slower, runs in the background"
+        row no "No style search" "$([[ $TAGS == no ]] && echo "current  ·  ")name search and shape filters only"
+    } | menu "Style search" "Search by look: type groovy 70s, horror or wedding and get fonts that look like it.   $HINT") || return 1
+    TAGS=$pick
+}
+
 step_launcher() {
     local pick
     pick=$( {
@@ -312,6 +324,7 @@ step_confirm() {
         row - "App" "$(tilde "$APP")$([[ $APP == "$SRC" ]] && echo "  (this folder)")"
         row - "Font collection" "$(tilde "$LIB")"
         row - "Google Fonts" "$g"
+        row - "Style search" "$(case $TAGS in gpu) echo "on (NVIDIA GPU)" ;; cpu) echo "on (CPU)" ;; *) echo off ;; esac)"
         row - "App menu" "$LAUNCHER"
         row - "Command" "$CMD"
         row - "Icon" "$(for ((i = 0; i < ${#ICONS[@]}; i += 2)); do [[ ${ICONS[i]} == "$ICON" ]] && echo "${ICONS[i+1]}"; done)"
@@ -398,6 +411,17 @@ do_install() {
         { tail -8 "$APP/cache/install.log" | sed 's/^/  /'; die "pip couldn't install them. Are you online?"; }
     ok "Python packages ready"
 
+    if [[ $TAGS == gpu || $TAGS == cpu ]]; then
+        local torch_ix=https://download.pytorch.org/whl/$([[ $TAGS == gpu ]] && echo cu128 || echo cpu)
+        { "$APP/.venv/bin/python" -m pip install --upgrade --disable-pip-version-check -q torch torchvision \
+              --index-url "$torch_ix" &&
+          "$APP/.venv/bin/python" -m pip install --upgrade --disable-pip-version-check -q -r "$APP/requirements-tags.txt"
+        } >>"$APP/cache/install.log" 2>&1 &
+        spin $! "Installing style search (PyTorch and the image-text model code, this is the big one)" &&
+            ok "Style search ready (the model, about 1.5 GB, downloads on its first run)" ||
+            { tail -6 "$APP/cache/install.log" | sed 's/^/  /'; bad "Style search couldn't be installed; the rest works without it."; }
+    fi
+
     write_config || die "Couldn't write $(tilde "$APP")/config.json."
     ok "Settings saved"
 
@@ -444,7 +468,7 @@ EOF
     fi
 
     mkdir -p "$CONF_DIR"
-    { printf 'APP=%q\nLIB=%q\nLAUNCHER=%q\nCMD=%q\nICON=%q\n' "$APP" "$LIB" "$LAUNCHER" "$CMD" "$ICON"; } >"$RECORD"
+    { printf 'APP=%q\nLIB=%q\nLAUNCHER=%q\nCMD=%q\nICON=%q\nTAGS=%q\n' "$APP" "$LIB" "$LAUNCHER" "$CMD" "$ICON" "$TAGS"; } >"$RECORD"
 
     echo; ok "Font Maniac is installed"
     [[ $LAUNCHER == yes ]] && dim "Open it from your app menu" || dim "Start it with $(tilde "$APP")/run.sh"
@@ -518,7 +542,7 @@ done
 check_deps
 [[ $ACTION == uninstall ]] && { do_uninstall; exit 0; }
 
-APP="" LIB="" GOOGLE=later LAUNCHER=yes CMD=no ICON=lavender
+APP="" LIB="" GOOGLE=later LAUNCHER=yes CMD=no ICON=lavender TAGS=no
 if [[ -f $RECORD ]]; then
     # shellcheck disable=SC1090
     source "$RECORD"
@@ -546,7 +570,7 @@ if ((${#OPTIONAL[@]})); then
     key
 fi
 
-steps=(step_app step_lib step_google step_launcher step_icon step_cmd step_confirm)
+steps=(step_app step_lib step_google step_tags step_launcher step_icon step_cmd step_confirm)
 i=0 BACKING=0
 while ((i < ${#steps[@]})); do
     ${steps[i]}
