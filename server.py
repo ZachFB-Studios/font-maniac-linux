@@ -143,6 +143,84 @@ def face_detail(fid):
     return f
 
 
+# ---------------------------------------------------------------- glyph sheet
+
+WEBFONTS = LRU(40)       # face id -> standalone sfnt bytes the browser can load (TTC face pulled out)
+GLYPHS = LRU(40)         # face id -> glyph list payload
+_ALT = {}                # char -> Windows Alt code ("0169" = Alt+0169 via cp1252, "3" = Alt+3 via cp437)
+for _b in range(1, 256):
+    for _enc, _fmt in (("cp437", "{}"), ("cp1252", "0{:03d}")):
+        try:
+            _c = bytes([_b]).decode(_enc)
+        except UnicodeDecodeError:
+            continue
+        if _enc == "cp1252" or _c not in _ALT:
+            _ALT[_c] = _fmt.format(_b)
+for _c in "".join(map(chr, range(0x20, 0x7F))):   # ASCII: plain keys, but Alt+0nnn works too
+    _ALT[_c] = f"0{ord(_c):03d}"
+
+
+def webfont(fid):
+    def make():
+        r = db().execute("SELECT path, idx FROM faces WHERE id=?", (fid,)).fetchone()
+        data = Path(r[0]).read_bytes()
+        if data[:4] in (b"ttcf",):
+            from fontTools.ttLib import TTCollection
+            import io
+            buf = io.BytesIO()
+            TTCollection(io.BytesIO(data)).fonts[r[1]].save(buf)
+            return buf.getvalue()
+        return data                      # ttf/otf/woff/woff2 load in the browser as they are
+    return WEBFONTS.get_or(fid, make)
+
+
+def glyph_list(fid):
+    """Every character the face maps (code point, Unicode name, category, Alt code) plus its unmapped glyph names."""
+    def make():
+        import unicodedata
+        data, idx = font_data(fid)
+        tt = fc.open_faces(data, ".ttc" if data[:4] == b"ttcf" else ".ttf")[idx if data[:4] == b"ttcf" else 0][1]
+        cmap = tt.getBestCmap() or {}
+        chars = []
+        for cp in sorted(cmap):
+            if cp < 0x20 or 0x7F <= cp < 0xA0:
+                continue                 # control codes
+            c = chr(cp)
+            name = unicodedata.name(c, "")
+            cat = unicodedata.category(c)
+            if not name:
+                name = "Private use" if cat == "Co" else ""
+            chars.append([cp, name, cat, _ALT.get(c, "")])
+        mapped = set(cmap.values())
+        order = tt.getGlyphOrder()
+        unmapped = [g for g in order if g not in mapped and g not in (".notdef", ".null", "NULL", "nonmarkingreturn", "space")]
+        return {"chars": chars, "unmapped": unmapped, "total": len(order)}
+    return GLYPHS.get_or(fid, make)
+
+
+def glyph_outlines(fid, start, n):
+    """SVG path data for unmapped glyphs (alternates, ligatures): they have no character to type, so draw them."""
+    from fontTools.pens.svgPathPen import SVGPathPen
+    from fontTools.pens.boundsPen import BoundsPen
+    data, idx = font_data(fid)
+    tt = fc.open_faces(data, ".ttc" if data[:4] == b"ttcf" else ".ttf")[idx if data[:4] == b"ttcf" else 0][1]
+    gs = tt.getGlyphSet()
+    names = glyph_list(fid)["unmapped"][start:start + n]
+    out = []
+    for g in names:
+        try:
+            pen, bp = SVGPathPen(gs), BoundsPen(gs)
+            gs[g].draw(pen)
+            gs[g].draw(bp)
+            out.append([g, pen.getCommands(), gs[g].width, bp.bounds])
+        except Exception:
+            out.append([g, "", 0, None])
+    head = tt["head"]
+    hhea = tt["hhea"] if "hhea" in tt else None
+    return {"upm": head.unitsPerEm, "asc": hhea.ascent if hhea else head.yMax, "desc": hhea.descent if hhea else head.yMin,
+            "glyphs": out}
+
+
 def font_data(fid):
     def load():
         r = db().execute("SELECT path, idx FROM faces WHERE id=?", (fid,)).fetchone()
@@ -545,7 +623,7 @@ class Handler(BaseHTTPRequestHandler):
     def send(self, body, ctype="application/json", cache=None, code=200):
         if isinstance(body, (dict, list)):
             body = json.dumps(body, separators=(",", ":")).encode()
-        if len(body) > 4096 and "gzip" in self.headers.get("Accept-Encoding", "") and not ctype.startswith("image"):
+        if len(body) > 4096 and "gzip" in self.headers.get("Accept-Encoding", "") and not ctype.startswith(("image", "font")):
             body = gzip.compress(body, 5)
             gz = True
         else:
@@ -588,6 +666,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(tags_search(q.get("q", "")) if q.get("q") else tags_info())
             if p == "/api/theme":
                 return self.send(theme())
+            if p.startswith("/font/"):
+                return self.send(webfont(int(p[6:])), "font/sfnt", "max-age=86400")
+            if p.startswith("/api/glyphs/"):
+                fid = int(p[12:])
+                if "start" in q:
+                    return self.send(glyph_outlines(fid, int(q["start"]), min(int(q.get("n", 200)), 500)))
+                return self.send(glyph_list(fid))
             if p.startswith("/api/face/"):
                 d = face_detail(int(p[10:]))
                 return self.send(d or {"error": "not found"}, code=200 if d else 404)

@@ -395,8 +395,180 @@ async function showInfo(id, toggle = true) {
     ["Axes", d.axes], ["Category", `${d.category} (from ${d.cat_src})`],
     ["Measured", d.serif == null ? "" : `serif ${d.serif} · contrast ${d.contrast} · x-height ${d.xh} · width ${d.wr} · stem ${d.stem} · slant ${d.slant}°`],
     ["Identical copies", d.twins.join("\n")]];
-  el.innerHTML = `<dl class="details">${rows.filter(r => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v).replaceAll("\n", "<br>")}</dd>`).join("")}</dl>`;
+  el.innerHTML = `<div class="gsheet" data-id="${id}"></div>` +
+    `<dl class="details">${rows.filter(r => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v).replaceAll("\n", "<br>")}</dd>`).join("")}</dl>`;
+  glyphSheet(el.firstChild, id);
 }
+
+// ------------------------------------------------------------------ glyph sheet
+
+const GS = { faces: new Set(), lists: new Map() };
+const BASIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:;!?&@#$%*()[]{}'\"-–—/\\+=<>_€£¥©®™°±×÷…•";
+const GFILTERS = [["all", "All"], ["L", "Letters"], ["N", "Numbers"], ["P", "Punctuation"], ["Sm", "Math"], ["arrows", "Arrows"],
+  ["Sc", "Currency"], ["S", "Symbols"], ["Co", "Private use"]];
+const isArrow = cp => (cp >= 0x2190 && cp <= 0x21FF) || (cp >= 0x27F0 && cp <= 0x27FF) || (cp >= 0x2900 && cp <= 0x297F) || (cp >= 0x2B00 && cp <= 0x2BFF) || (cp >= 0x1F800 && cp <= 0x1F8FF);
+const gfilter = (f, g) => f === "all" || (f === "arrows" ? isArrow(g[0]) : f === "S" ? g[2][0] === "S" && g[2] !== "Sm" && g[2] !== "Sc" && !isArrow(g[0]) :
+  f.length === 1 ? g[2][0] === f : g[2] === f);
+const hex = cp => cp.toString(16).toUpperCase().padStart(4, "0");
+
+async function fontFamilyFor(id) {      // the real font file, so the cells are text you can copy
+  const fam = "fmface" + id;
+  if (!GS.faces.has(id)) {
+    GS.faces.add(id);
+    try { document.fonts.add(await new FontFace(fam, `url(/font/${id})`).load()); }
+    catch { GS.faces.delete(id); }
+  }
+  return fam;
+}
+
+async function glyphSheet(box, id) {
+  box.innerHTML = `<div class="ghead"><b>Glyphs</b><span class="gcount">loading…</span></div>`;
+  const [fam, d] = await Promise.all([fontFamilyFor(id),
+    GS.lists.get(id) || fetch("/api/glyphs/" + id).then(r => r.json())]);
+  if (d.error) { box.querySelector(".gcount").textContent = d.error; return; }
+  GS.lists.set(id, d);
+  const st = { id, fam, d, expanded: false, filter: "all", q: "", sel: null, shown: 0, list: [] };
+  box._g = st;
+  gRender(box);
+}
+
+function gBasic(d) {
+  const have = new Map(d.chars.map(g => [g[0], g]));
+  const out = [...BASIC].map(c => have.get(c.codePointAt(0))).filter(Boolean);
+  return out.length >= 20 ? out : d.chars.slice(0, 96);    // symbol / non-Latin fonts: their first glyphs
+}
+
+function gRender(box) {
+  const st = box._g, d = st.d, n = d.chars.length, um = d.unmapped.length;
+  const counts = new Map(GFILTERS.map(([k]) => [k, 0]));
+  if (st.expanded) for (const g of d.chars) for (const [k] of GFILTERS) if (gfilter(k, g)) counts.set(k, counts.get(k) + 1);
+  box.innerHTML = `
+    <div class="ghead"><b>Glyphs</b><span class="gcount">${n.toLocaleString()} characters${um ? ` · ${um.toLocaleString()} more without a character code` : ""}</span>
+      <span class="sp"></span><button class="text" data-g="expand">${st.expanded ? "Basic sheet" : `All ${(n + um).toLocaleString()} glyphs`}</button></div>
+    ${st.expanded ? `<div class="gtools"><div class="chips">${GFILTERS.filter(([k]) => k === "all" || counts.get(k))
+      .map(([k, l]) => `<button class="chip${st.filter === k ? " on" : ""}" data-g="filter" data-k="${k}">${l} <small>${counts.get(k).toLocaleString()}</small></button>`).join("")}</div>
+      <div class="field gsearch"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+        <input data-g="q" placeholder="Name or U+ code · integral, arrow, 2211" value="${esc(st.q)}" autocomplete="off" spellcheck="false"></div></div>` : ""}
+    <div class="ggrid${st.expanded ? " big" : ""}" style="font-family:'${st.fam}', 'Adobe NotDef'"></div>
+    <div class="gmore"></div>
+    <div class="ginfo">${gInfo(st)}</div>`;
+  st.list = st.expanded ? d.chars.filter(g => gfilter(st.filter, g) && gMatch(st.q, g)) : gBasic(d);
+  st.shown = 0;
+  gMore(box);
+  if (st.expanded && um && st.filter === "all" && !st.q) {
+    const u = document.createElement("div");
+    u.className = "gunmapped";
+    u.innerHTML = `<div class="ghead"><b>Without a character code</b><span class="gcount">alternates, ligatures and other forms an app picks for you; not typeable, shown for reference</span></div><div class="ggrid big svg"></div>`;
+    box.querySelector(".gmore").after(u);
+    st.uShown = 0;
+  }
+  gObserve(box);
+}
+
+function gMatch(q, g) {
+  if (!q) return true;
+  const m = q.match(/^(?:u\+|0x)?([0-9a-f]{2,6})$/i);
+  if (m && g[0] === parseInt(m[1], 16)) return true;
+  if (q.length === 1 || [...q].length === 1) return String.fromCodePoint(g[0]) === q;
+  return g[1].toLowerCase().includes(q.toLowerCase());
+}
+
+function gCell(g) {
+  const ch = String.fromCodePoint(g[0]);
+  return `<button class="gl" data-g="pick" data-cp="${g[0]}" title="${esc(g[1] || "U+" + hex(g[0]))}  ·  click to copy">${esc(ch)}</button>`;
+}
+
+function gMore(box) {             // add cells a chunk at a time, so 40,000-glyph CJK fonts stay smooth
+  const st = box._g, grid = box.querySelector(".ggrid");
+  const next = st.list.slice(st.shown, st.shown + 600);
+  grid.insertAdjacentHTML("beforeend", next.map(gCell).join(""));
+  st.shown += next.length;
+  if (!st.list.length) grid.innerHTML = `<div class="gnone">No glyphs match.</div>`;
+}
+
+async function gMoreUnmapped(box) {
+  const st = box._g, grid = box.querySelector(".gunmapped .ggrid");
+  if (!grid || st.uBusy || st.uShown >= st.d.unmapped.length) throw 0;   // nothing more: stop the fill loop
+  st.uBusy = true;
+  try {
+    const r = await (await fetch(`/api/glyphs/${st.id}?start=${st.uShown}&n=300`)).json();
+    const h = r.asc - r.desc;
+    grid.insertAdjacentHTML("beforeend", r.glyphs.map(([name, path, w, b]) => {
+      const x0 = Math.min(0, b ? b[0] : 0), x1 = Math.max(w, b ? b[2] : w, 1);
+      return `<div class="gl" title="${esc(name)}"><svg viewBox="${x0} ${-r.asc} ${x1 - x0} ${h}"><path transform="scale(1,-1)" d="${path}"/></svg></div>`;
+    }).join(""));
+    st.uShown += r.glyphs.length;
+  } finally { st.uBusy = false; }
+}
+
+function gObserve(box) {             // fill the next chunk once the end of the grid comes near the bottom of the drawer
+  const st = box._g, end = () => drawer.getBoundingClientRect().bottom + 500;
+  while (st.shown < st.list.length && box.querySelector(".gmore").getBoundingClientRect().top < end()) gMore(box);
+  const u = box.querySelector(".gunmapped");
+  if (st.shown >= st.list.length && u && u.getBoundingClientRect().bottom < end())
+    gMoreUnmapped(box).then(() => gObserve(box), () => {});
+}
+drawer.addEventListener("scroll", () => { for (const b of drawer.querySelectorAll(".gsheet")) if (b._g?.expanded) gObserve(b); }, { passive: true });
+
+function gInfo(st) {
+  const g = st.sel;
+  if (!g) return `<span class="ghint">Click a glyph to copy it. Its codes show here.</span>`;
+  const ch = String.fromCodePoint(g[0]), u = hex(g[0]);
+  const codes = [["Character", ch], ["Unicode", "U+" + u], ["HTML", `&#x${u};`]];
+  codes.push(["Windows", g[3] ? "Alt+" + g[3] : `${u} Alt+X`]);   // no Alt code: Word/WordPad turn hex + Alt+X into the character
+  codes.push(["Linux", "Ctrl+Shift+U " + u.toLowerCase()]);
+  return `<span class="gbig" style="font-family:'${st.fam}'">${esc(ch)}</span>
+    <div class="gcodes"><div class="gname">${esc(g[1] || "No Unicode name")}</div>
+      ${codes.map(([k, v]) => `<button class="gcode" data-g="copy" data-v="${esc(v)}" title="Copy ${k}"><small>${k}</small> ${esc(v)}</button>`).join("")}</div>`;
+}
+
+async function gCopy(text, label) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {                                 // older browsers / no clipboard permission: the selection way
+    const ta = Object.assign(document.createElement("textarea"), { value: text });
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.append(ta); ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    if (!ok) return toast("Couldn't reach the clipboard");
+  }
+  toast(`Copied ${label}`);
+}
+
+drawer.addEventListener("click", e => {
+  const t = e.target.closest("[data-g]"), box = e.target.closest(".gsheet");
+  if (!t || !box?._g) return;
+  e.stopPropagation();
+  const st = box._g;
+  switch (t.dataset.g) {
+    case "expand": st.expanded = !st.expanded; st.filter = "all"; st.q = ""; gRender(box); break;
+    case "filter": st.filter = t.dataset.k; gRender(box); break;
+    case "pick": {
+      const cp = +t.dataset.cp;
+      st.sel = st.d.chars.find(g => g[0] === cp);
+      for (const c of box.querySelectorAll(".gl.on")) c.classList.remove("on");
+      t.classList.add("on");
+      box.querySelector(".ginfo").innerHTML = gInfo(st);
+      const ch = String.fromCodePoint(cp);
+      gCopy(ch, `${ch}  ·  U+${hex(cp)}${st.sel[3] ? "  ·  Alt+" + st.sel[3] : ""}`);
+      break;
+    }
+    case "copy": gCopy(t.dataset.v, t.dataset.v); break;
+  }
+}, true);
+let gqTimer;
+drawer.addEventListener("input", e => {
+  if (e.target.dataset.g !== "q") return;
+  const box = e.target.closest(".gsheet"), st = box._g;
+  clearTimeout(gqTimer);
+  gqTimer = setTimeout(() => {
+    st.q = e.target.value.trim();
+    const pos = e.target.selectionStart;
+    gRender(box);
+    const inp = box.querySelector('[data-g="q"]');
+    inp.focus(); inp.setSelectionRange(pos, pos);
+  }, 200);
+});
 
 drawer.addEventListener("click", async e => {
   const b = e.target.closest("[data-a]");
