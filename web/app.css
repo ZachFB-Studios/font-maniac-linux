@@ -162,7 +162,7 @@ main { flex: 1; display: flex; min-height: 0; background: var(--s1); }
 
 /* ---------- left panel / top-right controls */
 #left { width: 250px; flex: none; display: flex; flex-direction: column; background: var(--s1); min-height: 0; }
-#left .preview { margin: 6px 14px 4px; flex: none; position: relative; z-index: 1; } /* above the scrolling filter list, or its layer clips the focus ring; 6px lines up with the search bar */
+#left .preview { margin: 14px 14px 4px; flex: none; position: relative; z-index: 1; } /* above the scrolling filter list, or its layer clips the focus ring; 14px lines up with the search bar */
 #left #filters { width: auto; flex: 1; }
 #gear { margin-left: auto; }
 /* hugging: the s1 frame (top bar, side panel, drawer) wraps the content area, which sits inside it as a rounded card */
@@ -171,7 +171,7 @@ main { flex: 1; display: flex; min-height: 0; background: var(--s1); }
   background: var(--bg); border-radius: 24px; overflow: hidden; margin: 0 0 10px;
 }
 main:has(> #drawer[hidden]) #center { margin-right: 10px; }
-#bar2 { display: flex; align-items: center; gap: 10px; padding: 6px 14px; flex: none; }
+#bar2 { display: flex; align-items: center; gap: 10px; padding: 14px 14px 6px; flex: none; } /* top = side inset of the hugged card */
 #top #folder { max-width: 260px; }
 #top #count { min-width: 0; text-align: left; }
 .icon.big { width: 40px; height: 40px; border-radius: 20px; }
